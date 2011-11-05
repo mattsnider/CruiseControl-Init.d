@@ -1,0 +1,160 @@
+#!/bin/sh
+#content of /opt/cruisecontrol/init script
+# chkconfig: 345 99 05
+# description: CruiseControl build loop (see /home/tools)
+
+# CruiseControl Unix Startup Script Version 2.1
+#
+# based on http://confluence.public.thoughtworks.org/display/CC/UnixStartupScriptVersion1.x
+# adapted for multiple projects
+# also based on the file attached to the above page created by Jerome Lacoste
+
+#
+# CruiseControl startup: Startup and kill script for Cruise Control
+#
+
+
+###################################################################################################
+# USER CONFIGURATION
+#
+# Fill in these values for your Cruise Control setup
+
+# What user will Cruise Control run as?  The user will need permission to write and modify files
+# in the next entries.
+CC_USER=ubuntu
+
+
+# Where is the CC startup script located?
+CC_INSTALL_DIR=/home/ubuntu/cruisecontrol
+
+# In what directory is the config.xml file located for CC?
+# default: CC_WORK_DIR=$CC_INSTALL_DIR
+CC_WORK_DIR=$CC_INSTALL_DIR
+
+# Where will the cruisecontrol.log file be located?
+# default: CC_LOGFILE_DIR=$CC_INSTALL_DIR
+CC_LOGFILE_DIR=$CC_INSTALL_DIR
+
+
+#######################
+# ENVIRONMENT ADDITIONS
+
+# Add environement variables here that are needed by your build.
+# example:
+#  export JAVA_HOME=/usr/local/java
+#
+# or like this for local variables ONLY used in this file:
+#  JAVA_HOME=/usr/local/java
+
+
+# Add path to additional executables needed for project build.  See PATH entry below for base config.
+# No additional action taken when blank.
+PATH_ADDITIONS=
+
+
+
+##############################
+# CRUISE CONTROL PORT SETTINGS
+
+# Port for Jetty reporting application.  You can access it by going to http://localhost:8080
+# default CC_WEBPORT=8080
+CC_WEBPORT=8484
+
+# JMX port for webapp and Java Management eXtensions (JMX).  You can access it by going to http://localhost:8080
+# Change only if this port is in use as the webapp will also need modification.
+# default CC_JMXPORT=8082
+CC_JMXPORT=8082
+
+# RMI port for control via Java's Remote Management Interface (RMI)
+# Leave blank to disable.
+CC_RMIPORT=
+
+
+
+###################################################################################################
+# DO NOT MODIFY ENTRIES BELOW THIS LINE
+
+NAME=cruisecontrol
+DESC="CruiseControl - continuous integration build loop"
+
+
+PATH=/sbin:/usr/sbin:/usr/bin:/bin
+# add additions if variable has text defined
+if [ -n "$PATH_ADDITIONS" ]; then
+    PATH=$PATH_ADDITIONS:$PATH
+fi
+export PATH
+
+
+CC_DAEMON=$CC_INSTALL_DIR/cruisecontrol.sh
+
+CC_CONFIG_FILE=$CC_WORK_DIR/config.xml
+
+CC_LOG_FILE=$CC_LOGFILE_DIR/cruisecontrol.log
+
+CC_COMMAND="$CC_DAEMON -configfile $CC_CONFIG_FILE -webport $CC_WEBPORT -jmxport $CC_JMXPORT -rmiport $CC_RMIPORT"
+
+# overwrite settings from default file
+if [ -f /etc/default/cruisecontrol ]; then
+  . /etc/default/cruisecontrol
+fi
+
+# does the executable exist?
+test -f $CC_DAEMON || (echo "The executable $CC_DAEMON does not exist!" && exit 0)
+
+if [ `id -u` -ne 0 ]; then
+        echo "Not starting/stopping $DESC, you are not root."
+        exit 4
+fi
+
+# Get the PID output from the startup script
+if [ -f $CC_INSTALL_DIR/cc.pid ]; then
+	CC_PID=`cat $CC_INSTALL_DIR/cc.pid`
+else
+	echo "No cc.pid file found.  CC process may not be controllable from this script!"
+fi
+
+
+case "$1" in
+
+  'start')
+    cd $CC_INSTALL_DIR
+    #echo "CC environtment at startup" > cc.startup.env
+    #env >> cc.startup.env
+    su $CC_USER -c "/bin/sh -c \"$CC_COMMAND >> $CC_LOG_FILE 2>&1\"" & RETVAL=$?
+    echo "$NAME started with jmx on port ${CC_JMXPORT}"
+    ;;
+
+  'stop')
+    if [ -n "$CC_PID" ] && ps -p ${CC_PID} > /dev/null ; then
+     kill -9 ${CC_PID}
+      $0 status
+      RETVAL=$?
+    else
+      echo "$NAME is not running"
+      RETVAL=1
+    fi
+    ;;
+
+  'status')
+    if [ -n "$CC_PID" ] && ps -p ${CC_PID} > /dev/null ; then
+      echo $NAME \(pids $CC_PID\) is running
+      RETVAL=0
+    else
+      echo "$NAME is stopped"
+      RETVAL=1
+    fi
+    ;;
+
+  'restart')
+    $0 stop && $0 start
+    RETVAL=$?
+    ;;
+
+  *)
+    echo "Usage: $0 { start | stop | status | restart }"
+    exit 1
+    ;;
+esac
+#echo ending $0 $$....
+exit 0;
